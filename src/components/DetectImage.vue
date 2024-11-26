@@ -1,31 +1,30 @@
 <template>
   <div class="hello">
     <h1>{{ msg }}</h1>
-    <!-- Display an image -->
     <div>
       <img class="image" ref="img" :src="require('../assets/images/' + getImgIndex + '.jpg')" />
     </div>
     <div>
-      <!-- Display a button -->
       <button class="button" @click="next()" :disabled="disable">Next</button>
     </div>
-    <div v-for="pred in predictions" :key="pred.index">{{  pred.label }}: {{ pred.probability.toFixed(0) + '%'}}</div>
+    <div v-for="pred in predictions" :key="pred.index">{{ pred.label }}: {{ pred.probability.toFixed(0) + '%' }}</div>
     <div v-if="!predictions.length">hmmm...</div>
   </div>
 </template>
 
 <script>
-// import the model and labels
-import * as tf from '@tensorflow/tfjs-core';
+import * as tf from '@tensorflow/tfjs';
 import * as cvstfjs from "customvision-tfjs";
 import labels from "raw-loader!../../public/models/labels.txt";
+
+tf.setBackend('webgl'); // or 'cpu'
+
 export default {
   name: "DetectImage",
   props: {
     msg: String
   },
-// data elements
-data() {
+  data() {
     return {
       labels: labels,
       model: null,
@@ -34,52 +33,55 @@ data() {
       numImages: 25
     };
   },
-   // return the index of the image
-computed: {
+  computed: {
     getImgIndex() {
       return this.image.toString();
     },
     disable() {
-      if (this.image == this.numImages) {
-        return true;
-      } else return false;
+      return this.image === this.numImages;
     }
   },
-  // load the model
-async mounted() {
+  async mounted() {
+    await tf.ready(); // Ensure the backend is ready
     this.image++;
-    //load up a new model
     this.model = new cvstfjs.ClassificationModel();
-    await this.model.loadModelAsync("models/model.json");
-    //parse labels
-    this.labels = labels.split("\n").map(e => {
-      return e.trim();
-    });
-    //run prediction
+    try {
+      await this.model.loadModelAsync("models/model.json");
+      console.log("Model loaded successfully");
+    } catch (error) {
+      console.error("Error loading model:", error);
+    }
+    this.labels = labels.split("\n").map(e => e.trim());
     this.predict();
   },
-methods: {
+  methods: {
     async predict() {
-      //execute inference
-      let prediction = await this.model.executeAsync(this.$refs.img);
-      let label = prediction[0];
-      //build up a predictions object by parsing details to labels and probability
-      this.predictions = label.map((p, i) => {
-        return { index: i, label: this.labels[i], probability: p * 100 };
-      });
+      const imgElement = this.$refs.img;
+      if (!imgElement) {
+        console.error('Image element not found');
+        return;
+      }
+      try {
+        const prediction = await this.model.executeAsync(imgElement);
+        console.log('Prediction:', prediction);
+        const label = prediction[0];
+        this.predictions = label.map((p, i) => ({
+          index: i,
+          label: this.labels[i],
+          probability: p * 100
+        }));
+      } catch (error) {
+        console.error('Error during model execution:', error);
+      }
     },
- // capture user interaction
     next() {
       this.image++;
-      this.predictions = [];
-      //this.predict();
-      setTimeout(this.predict, 500);
+      this.predict();
     }
   }
-};
+}
 </script>
 
-<!-- bling bling baby -->
 <style scoped>
 h3 {
   margin: 40px 0 0;
@@ -94,14 +96,5 @@ h3 {
   height: 50px;
   border-radius: 5px;
   background-color: blueviolet;
-  color: white;
-  font-size: 20pt;
-  margin: 10px;
-}
-.button:disabled,
-.button[disabled] {
-  border: 1px solid #999999;
-  background-color: #cccccc;
-  color: #666666;
 }
 </style>
